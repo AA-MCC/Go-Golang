@@ -28,5 +28,5 @@ func main() {
 	var v3 = "hello" //figures out the type for us
 	v4 := 2.4        // shortcut when initially assigning value
 	v4 = 5.4
-
+	pl(vName, v1, v2, v3, v4)
 }
