@@ -110,4 +110,44 @@ func main() {
 	randomMinutes := rng.Intn(50) + 1
 	pl("Random minutes: ", randomMinutes)
 
+	// fmt.Printf symbols %d %d %f %t %s %o %x %v %T
+
+	//for loops
+	// for initialisation; condition, postStatement {BODY}
+	for x := 1; x <= 5; x++ {
+		pl(x)
+	}
+
+	for x := 5; x >= 1; x-- {
+		pl(x)
+	}
+
+	fX := 0
+	for fX < 5 {
+		pl(fX)
+		fX++
+	}
+
+	for true {
+		//continue skips to end of loop
+		// break exits the loop
+		break
+	}
+
+	pl("............................")
+	aNums := []int{1, 2, 3}
+	for _, num := range aNums {
+		pl(num)
+	}
+
+	aStr1 := "abcde"
+	rArr := []rune(aStr1)
+	for _, v := range rArr {
+		fmt.Printf("Rune Array : %d\n", v)
+	}
+
+	byteArr := []byte{'a', 'b', 'c'}
+	bStr := string(byteArr[:])
+	pl("I'm a string :", bStr)
+
 }
