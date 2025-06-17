@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"log"
+	"math/rand"
 	"os"
 	"reflect"
 	"strconv"
@@ -90,5 +91,23 @@ func main() {
 	now := time.Now()
 	pl(now.Year(), now.Month(), now.Day())
 	pl(now.Hour(), now.Minute(), now.Second())
+
+	//random values
+
+	// seed value based on seconds since the date 1/1/1970
+
+	seedSecs := time.Now().Unix()
+	rand.Seed(seedSecs)          // deprecated in Go before v 1.20
+	randNum := rand.Intn(50) + 1 // random numbers between 1 and 50
+	pl("Random :", randNum)
+
+	// New way not deprecated
+	// Create a new random number generator with a custom seed (eg current time)
+	source := rand.NewSource(time.Now().UnixNano())
+	rng := rand.New(source)
+
+	// Generate a random number of minutes between 1 and 15
+	randomMinutes := rng.Intn(50) + 1
+	pl("Random minutes: ", randomMinutes)
 
 }
