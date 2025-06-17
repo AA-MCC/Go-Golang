@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 var pl = fmt.Println
@@ -75,5 +76,13 @@ func main() {
 	pl("Upper :", strings.ToUpper(sV2))
 	pl("Prefix :", strings.HasPrefix("tacocat", "taco"))
 	pl("Suffix :", strings.HasSuffix("tacocat", "taco"))
+
+	//Runes
+
+	rStr := "abcdefg"
+	pl("Rune count :", utf8.RuneCountInString(rStr))
+	for i, runeVal := range rStr {
+		fmt.Printf("%d : %#U : %c\n", i, runeVal, runeVal)
+	}
 
 }
