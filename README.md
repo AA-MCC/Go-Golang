@@ -7,7 +7,7 @@ Usage
 To add a task:-
 go run todo-app\cmd\main.go -action add -desc "Buy bread" 
 
-To list all tasks
+To list all tasks:-
 go run todo-app\cmd\main.go -action list
 
 
