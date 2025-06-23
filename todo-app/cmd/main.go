@@ -2,33 +2,30 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/google/uuid"
+	"todo-app/todostore"
+
+	"crypto/rand"
+	"encoding/hex"
 )
 
 var fileName = "todolist.json"
-var todos []TodoTask
 var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
-type TodoTask struct {
-	ID          string `json:"id"` //package level access as starts with uppercase
-	Description string `json:"description"`
-	Status      string `json:"status"`
-}
-
 func main() {
-	// Create a context with TraceID at the start
 	ctx := context.Background()
 	ctx = withTraceID(ctx)
 
 	fmt.Println("Hello Go.. ")
 
-	loadTodos(ctx)
+	store := todostore.NewStore(fileName)
+	_ = store.LoadTodos(ctx)
 
 	action := flag.String("action", "add", "Action : add, list, update, delete")
 	desc := flag.String("desc", "", "Description for add/update")
@@ -44,59 +41,42 @@ func main() {
 		"status", *status,
 		"id", *id)
 
-	// handle the commands
+	sigs := make(chan os.Signal, 1)
+	done := make(chan bool, 1)
+	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigs
+		// Now have received signal
+		logger.Info("Received interrupt signal, exiting...", "traceID", getTraceID(ctx))
+		// Signal that we are done
+		done <- true
+	}()
+
 	switch *action {
 	case "add":
 		if *desc != "" {
-			addTodo(ctx, *desc)
-			saveTodos(ctx)
-			listTodos(ctx)
+			store.AddTodo(ctx, *desc)
+			_ = store.SaveTodos(ctx)
+			printTodos(ctx, store)
 		}
 	case "list":
-		listTodos(ctx)
+		printTodos(ctx, store)
 	case "update":
-		updateTodo(ctx, *id, *desc, *status)
-		saveTodos(ctx)
+		store.UpdateTodo(ctx, *id, *desc, *status)
+		_ = store.SaveTodos(ctx)
 	case "delete":
-		deleteTodo(ctx, *id)
-		saveTodos(ctx)
+		store.DeleteTodo(ctx, *id)
+		_ = store.SaveTodos(ctx)
 	default:
 		logger.Error("Invalid action", "traceID", getTraceID(ctx), "action", *action)
 	}
+
+	fmt.Println("Press Ctrl+C to exit...")
+	<-done
 }
 
-func saveTodos(ctx context.Context) {
-	data, err := json.MarshalIndent(todos, "", "  ")
-	if err != nil {
-		logger.Error("Error saving todos", "traceID", getTraceID(ctx), "error", err)
-		return
-	}
-	logger.Info("Saved Todo", "traceID", getTraceID(ctx), "file", fileName)
-	_ = os.WriteFile(fileName, data, 0644)
-}
-
-// func saveTodos(data map[string][]byte) {
-// 	file, err := os.Create(*file)
-// 	if err != nil {
-// 		log.Fatalf("failed to create file: %v", err)
-// 	}
-// 	defer file.Close()
-
-// 	encoder := json.NewEncoder(file)
-// 	if err := encoder.Encode(data); err != nil {
-// 		log.Fatalf("failed to encode data: %v", err)
-// 	}
-// }
-
-func loadTodos(ctx context.Context) {
-	data, err := os.ReadFile(fileName)
-	if err == nil {
-		_ = json.Unmarshal(data, &todos)
-	}
-	logger.Info("Loaded Todos", "traceID", getTraceID(ctx), "count", len(todos))
-}
-
-func listTodos(ctx context.Context) {
+func printTodos(ctx context.Context, store *todostore.Store) {
+	todos := store.ListTodos(ctx)
 	logger.Info("Listing todos", "traceID", getTraceID(ctx), "count", len(todos))
 	for _, t := range todos {
 		logger.Info("Todo item",
@@ -107,74 +87,10 @@ func listTodos(ctx context.Context) {
 	}
 }
 
-func addTodo(ctx context.Context, description string) {
-	logger.Info("Attempting to add todo", "traceID", getTraceID(ctx), "description", description)
-
-	if description == "" {
-		logger.Error("Description required", "traceID", getTraceID(ctx))
-		return
-	}
-	id := uuid.New().String()
-
-	newTodo := TodoTask{
-		ID:          id,
-		Description: description,
-		Status:      "not started",
-	}
-	todos = append(todos, newTodo)
-	logger.Info("Added todo",
-		"traceID", getTraceID(ctx),
-		"id", newTodo.ID,
-		"description", newTodo.Description)
-}
-
-func updateTodo(ctx context.Context, id string, newDescription string, newStatus string) {
-	logger.Info("Attempting to update todo", "traceID", getTraceID(ctx), "newDescription", newDescription)
-	logger.Info("Attempting to update todo", "traceID", getTraceID(ctx), "newStatus", newStatus)
-	if newDescription == "" && newStatus == "" {
-		logger.Error("Description or status needed", "traceID", getTraceID(ctx))
-		return
-	}
-
-	// Find and update the todo by ID
-	for i, t := range todos {
-		if t.ID == id {
-			if newDescription != "" {
-				todos[i].Description = newDescription
-			}
-			if newStatus != "" {
-				todos[i].Status = newStatus
-			}
-			logger.Info("Updated todo",
-				"traceID", getTraceID(ctx),
-				"id", todos[i].ID,
-				"description", todos[i].Description,
-				"status", todos[i].Status)
-			return
-		}
-	}
-	logger.Error("Todo not found", "traceID", getTraceID(ctx), "id", id)
-}
-
-func deleteTodo(ctx context.Context, id string) {
-	logger.Info("Attempting to delete todo", "traceID", getTraceID(ctx), "id", id)
-
-	for i, t := range todos {
-		if t.ID == id {
-			todos = append(todos[:i], todos[i+1:]...)
-			logger.Info("Deleted todo",
-				"traceID", getTraceID(ctx),
-				"id", t.ID,
-				"description", t.Description,
-				"status", t.Status)
-			return
-		}
-	}
-	logger.Error("Todo not found for deletion", "traceID", getTraceID(ctx), "id", id)
-}
-
 func withTraceID(ctx context.Context) context.Context {
-	return context.WithValue(ctx, "traceID", uuid.New().String())
+	b := make([]byte, 16)
+	_, _ = rand.Read(b)
+	return context.WithValue(ctx, "traceID", hex.EncodeToString(b))
 }
 
 func getTraceID(ctx context.Context) string {
