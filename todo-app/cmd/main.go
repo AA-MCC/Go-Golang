@@ -15,6 +15,7 @@ import (
 
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 )
 
 var fileName = "todolist.json"
@@ -22,6 +23,86 @@ var logger = slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 func handler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "ping %s\n", r.URL.Query().Get("name"))
+}
+
+// API Handlers
+func createHandler(store *todostore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Description string `json:"description"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		todo := store.AddTodo(r.Context(), req.Description)
+		if todo == nil {
+			http.Error(w, "Description required", http.StatusBadRequest)
+			return
+		}
+		// _ = store.SaveTodos(r.Context())
+		store.SaveTodos(r.Context())
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(todo)
+	}
+}
+
+func getHandler(store *todostore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		for _, t := range store.ListTodos(r.Context()) {
+			if t.ID == id {
+				w.Header().Set("Content-Type", "application/json")
+				json.NewEncoder(w).Encode(t)
+				return
+			}
+		}
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+}
+
+func updateHandler(store *todostore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID          string `json:"id"`
+			Description string `json:"description"`
+			Status      string `json:"status"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request", http.StatusBadRequest)
+			return
+		}
+		ok := store.UpdateTodo(r.Context(), req.ID, req.Description, req.Status)
+		if !ok {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		_ = store.SaveTodos(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func deleteHandler(store *todostore.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			id := r.URL.Query().Get("id")
+			if id == "" {
+				http.Error(w, "Invalid request", http.StatusBadRequest)
+				return
+			}
+			req.ID = id
+		}
+		ok := store.DeleteTodo(r.Context(), req.ID)
+		if !ok {
+			http.Error(w, "Not found", http.StatusNotFound)
+			return
+		}
+		_ = store.SaveTodos(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}
 }
 
 func main() {
@@ -116,6 +197,11 @@ func main() {
 	default:
 		logger.Error("Invalid action", "traceID", getTraceID(ctx), "action", *action)
 	}
+
+	mux.HandleFunc("/create", createHandler(store))
+	mux.HandleFunc("/get", getHandler(store))
+	mux.HandleFunc("/update", updateHandler(store))
+	mux.HandleFunc("/delete", deleteHandler(store))
 
 	sigs := make(chan os.Signal, 1)
 	done := make(chan bool, 1)
